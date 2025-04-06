@@ -5,12 +5,18 @@ import BusinessDashboard from '../components/dashboard/BusinessDashboard';
 import CharityDashboard from '../components/dashboard/CharityDashboard';
 import VolunteerDashboard from '../components/dashboard/VolunteerDashboard';
 import { db, collection, getDocs, query, where, orderBy, limit } from '../lib/firebase';
+import { useToast } from '../hooks/use-toast';
+import { BrainCircuit } from 'lucide-react';
+import { generateImpactInsights } from '../lib/gemini';
 
 const Dashboard = () => {
   const { currentUser, userProfile } = useAuth();
+  const { toast } = useToast();
   const [donations, setDonations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [globalInsights, setGlobalInsights] = useState(null);
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false);
 
   useEffect(() => {
     const fetchDonations = async () => {
@@ -57,6 +63,11 @@ const Dashboard = () => {
         }));
         
         setDonations(donationsList);
+
+        // Once we have donations data, fetch global insights
+        if (donationsList.length > 0) {
+          fetchGlobalInsights(donationsList);
+        }
       } catch (err) {
         console.error("Error fetching donations:", err);
         setError("Failed to load donations. Please refresh the page.");
@@ -69,6 +80,47 @@ const Dashboard = () => {
       fetchDonations();
     }
   }, [currentUser, userProfile]);
+
+  const fetchGlobalInsights = async (donationsList) => {
+    setIsLoadingInsights(true);
+    try {
+      // Mock data for demonstration - in a real app, this would be calculated properly
+      const impactData = {
+        totalFood: donationsList.reduce((sum, donation) => sum + parseFloat(donation.quantity || 0), 0).toFixed(0),
+        unit: donationsList[0]?.unit || "pounds",
+        totalDonations: donationsList.length,
+        businessCount: new Set(donationsList.map(d => d.donorId)).size,
+        charityCount: new Set(donationsList.map(d => d.claimedBy).filter(Boolean)).size,
+        volunteerCount: new Set(donationsList.map(d => d.transportVolunteerId).filter(Boolean)).size,
+        mealsProvided: Math.round(donationsList.reduce((sum, donation) => sum + parseFloat(donation.quantity || 0), 0) / 1.2),
+        carbonSaved: Math.round(donationsList.reduce((sum, donation) => sum + parseFloat(donation.quantity || 0), 0) * 2.5),
+        timePeriod: "Last 30 days"
+      };
+      
+      const insights = await generateImpactInsights(impactData);
+      setGlobalInsights(insights);
+    } catch (error) {
+      console.error("Error generating global insights:", error);
+      toast({
+        variant: "destructive",
+        title: "Failed to generate insights",
+        description: "There was an error analyzing platform impact. Please try again later.",
+      });
+    } finally {
+      setIsLoadingInsights(false);
+    }
+  };
+
+  const handleRefreshInsights = () => {
+    if (donations.length > 0) {
+      fetchGlobalInsights(donations);
+    } else {
+      toast({
+        title: "No donation data",
+        description: "Need donation data to generate insights.",
+      });
+    }
+  };
 
   if (!currentUser || !userProfile) {
     return (
@@ -103,15 +155,38 @@ const Dashboard = () => {
         )}
         
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Welcome, {userProfile.organizationName || currentUser.email}!
-          </h1>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
+            <h1 className="text-3xl font-bold text-gray-900">
+              Welcome, {userProfile.organizationName || currentUser.email}!
+            </h1>
+            <button
+              onClick={handleRefreshInsights}
+              disabled={isLoadingInsights}
+              className="mt-2 md:mt-0 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+            >
+              <BrainCircuit className="mr-2 h-5 w-5" />
+              {isLoadingInsights ? "Analyzing..." : "Platform Insights"}
+            </button>
+          </div>
           <p className="text-gray-600 mt-1">
             {userProfile.userType === 'business' && "Manage your food donations and track your impact."}
             {userProfile.userType === 'charity' && "Find available donations and manage your requests."}
             {userProfile.userType === 'volunteer' && "Find opportunities to help deliver food donations."}
           </p>
         </div>
+        
+        {/* Global AI Insights Panel */}
+        {globalInsights && (
+          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-8">
+            <div className="flex items-center mb-3">
+              <BrainCircuit className="h-6 w-6 text-indigo-600 mr-2" />
+              <h2 className="text-xl font-semibold text-indigo-700">AI Platform Impact Analysis</h2>
+            </div>
+            <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-line">
+              {globalInsights}
+            </div>
+          </div>
+        )}
         
         {userProfile.userType === 'business' && (
           <BusinessDashboard donations={donations} />

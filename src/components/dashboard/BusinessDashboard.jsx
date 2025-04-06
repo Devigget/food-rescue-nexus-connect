@@ -1,14 +1,15 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, 
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend
 } from 'recharts';
-import { PlusCircle, ShoppingBag, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
-import { db, collection, addDoc, serverTimestamp } from '../../lib/firebase';
+import { PlusCircle, ShoppingBag, CheckCircle, Clock, AlertTriangle, BrainCircuit } from 'lucide-react';
+import { db, collection, addDoc, serverTimestamp, getDocs, query, where, orderBy } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../hooks/use-toast';
+import { analyzeWastePatterns } from '../../lib/gemini';
 
 const COLORS = ['#22c55e', '#eab308', '#ef4444'];
 
@@ -17,6 +18,8 @@ const BusinessDashboard = ({ donations }) => {
   const { toast } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [aiInsights, setAiInsights] = useState(null);
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false);
   const [formData, setFormData] = useState({
     foodName: '',
     category: '',
@@ -25,7 +28,8 @@ const BusinessDashboard = ({ donations }) => {
     expirationDate: '',
     pickupInstructions: '',
     description: '',
-    needsTransport: false
+    needsTransport: false,
+    storageRequirements: ''
   });
 
   const donationStats = {
@@ -51,6 +55,32 @@ const BusinessDashboard = ({ donations }) => {
     { name: 'Jun', meals: 210 }
   ];
 
+  useEffect(() => {
+    // When donations change and we have enough data, get AI insights
+    if (donations.length >= 5) {
+      fetchAiInsights();
+    }
+  }, [donations]);
+
+  const fetchAiInsights = async () => {
+    if (donations.length === 0) return;
+    
+    setIsLoadingInsights(true);
+    try {
+      const insights = await analyzeWastePatterns(donations);
+      setAiInsights(insights);
+    } catch (error) {
+      console.error("Error getting AI insights:", error);
+      toast({
+        variant: "destructive",
+        title: "Failed to generate AI insights",
+        description: "There was an error analyzing your donation patterns. Please try again later.",
+      });
+    } finally {
+      setIsLoadingInsights(false);
+    }
+  };
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData({
@@ -75,6 +105,7 @@ const BusinessDashboard = ({ donations }) => {
         pickupInstructions: formData.pickupInstructions,
         description: formData.description,
         needsTransport: formData.needsTransport,
+        storageRequirements: formData.storageRequirements,
         status: 'available',
         createdAt: serverTimestamp()
       });
@@ -93,7 +124,8 @@ const BusinessDashboard = ({ donations }) => {
         expirationDate: '',
         pickupInstructions: '',
         description: '',
-        needsTransport: false
+        needsTransport: false,
+        storageRequirements: ''
       });
       
       setIsModalOpen(false);
@@ -113,14 +145,37 @@ const BusinessDashboard = ({ donations }) => {
     <div>
       <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center">
         <h2 className="text-2xl font-bold text-gray-900 mb-4 md:mb-0">Business Dashboard</h2>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
-        >
-          <PlusCircle className="mr-2 h-5 w-5" />
-          Add New Donation
-        </button>
+        <div className="flex space-x-3">
+          <button
+            onClick={fetchAiInsights}
+            disabled={isLoadingInsights || donations.length < 5}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <BrainCircuit className="mr-2 h-5 w-5" />
+            {isLoadingInsights ? "Analyzing..." : "AI Insights"}
+          </button>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+          >
+            <PlusCircle className="mr-2 h-5 w-5" />
+            Add New Donation
+          </button>
+        </div>
       </div>
+
+      {/* AI Insights Panel - New Section */}
+      {aiInsights && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-8">
+          <div className="flex items-center mb-2">
+            <BrainCircuit className="h-6 w-6 text-indigo-600 mr-2" />
+            <h3 className="text-lg font-semibold text-indigo-700">AI-Powered Insights</h3>
+          </div>
+          <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-line">
+            {aiInsights}
+          </div>
+        </div>
+      )}
 
       {/* Donation Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -383,6 +438,26 @@ const BusinessDashboard = ({ donations }) => {
                           required
                           className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary"
                         />
+                      </div>
+                      
+                      <div className="mb-4">
+                        <label htmlFor="storageRequirements" className="block text-sm font-medium text-gray-700 mb-1">
+                          Storage Requirements
+                        </label>
+                        <select
+                          id="storageRequirements"
+                          name="storageRequirements"
+                          value={formData.storageRequirements}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary"
+                        >
+                          <option value="">Select storage requirements</option>
+                          <option value="Room Temperature">Room Temperature</option>
+                          <option value="Refrigeration">Refrigeration</option>
+                          <option value="Freezer">Freezer</option>
+                          <option value="Keep Dry">Keep Dry</option>
+                          <option value="Other">Other (specify in description)</option>
+                        </select>
                       </div>
                       
                       <div className="mb-4">

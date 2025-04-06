@@ -5,10 +5,11 @@ import {
   PieChart, Pie, Cell, ResponsiveContainer, 
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend
 } from 'recharts';
-import { ShoppingBag, Users, MapPin, Calendar, CheckCircle, Truck } from 'lucide-react';
+import { ShoppingBag, Users, MapPin, Calendar, CheckCircle, Truck, BrainCircuit } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { db, doc, collection, getDocs, getDoc, updateDoc, query, where, serverTimestamp } from '../../lib/firebase';
 import { useToast } from '../../hooks/use-toast';
+import { getMatchingRecommendations } from '../../lib/gemini';
 
 const COLORS = ['#22c55e', '#eab308', '#ef4444'];
 
@@ -19,6 +20,8 @@ const CharityDashboard = ({ donations }) => {
   const [claimedDonations, setClaimedDonations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDonation, setSelectedDonation] = useState(null);
+  const [aiRecommendation, setAiRecommendation] = useState(null);
+  const [isLoadingAi, setIsLoadingAi] = useState(false);
   
   // Dummy stats data (would be real data in production)
   const stats = {
@@ -91,6 +94,7 @@ const CharityDashboard = ({ donations }) => {
       });
       
       setSelectedDonation(null);
+      setAiRecommendation(null);
     } catch (error) {
       console.error("Error claiming donation:", error);
       toast({
@@ -98,6 +102,30 @@ const CharityDashboard = ({ donations }) => {
         title: "Failed to claim donation",
         description: "There was an error claiming this donation. Please try again.",
       });
+    }
+  };
+
+  const handleGetAiRecommendation = async (donation) => {
+    setIsLoadingAi(true);
+    try {
+      // Mock charity data for the recommendation - in a real app, this would be fetched from the database
+      const mockCharities = [
+        { organizationName: userProfile.organizationName, distance: "2.5", populationServed: "Low-income families", capacity: "Medium" },
+        { organizationName: "Second Harvest Food Bank", distance: "4.2", populationServed: "Homeless individuals", capacity: "Large" },
+        { organizationName: "Community Action Network", distance: "3.1", populationServed: "Seniors and children", capacity: "Small" }
+      ];
+      
+      const recommendation = await getMatchingRecommendations(donation, mockCharities);
+      setAiRecommendation(recommendation);
+    } catch (error) {
+      console.error("Error getting AI recommendation:", error);
+      toast({
+        variant: "destructive",
+        title: "Failed to get AI recommendation",
+        description: "There was an error processing this request. Please try again.",
+      });
+    } finally {
+      setIsLoadingAi(false);
     }
   };
 
@@ -224,6 +252,7 @@ const CharityDashboard = ({ donations }) => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Donor</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiration</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Storage</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -242,6 +271,9 @@ const CharityDashboard = ({ donations }) => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">{donation.expirationDate}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{donation.storageRequirements || "Not specified"}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button
@@ -336,6 +368,32 @@ const CharityDashboard = ({ donations }) => {
                     <h3 className="text-lg leading-6 font-medium text-gray-900 mb-2">
                       {selectedDonation.foodName}
                     </h3>
+                    
+                    {/* AI Recommendation Button */}
+                    {!aiRecommendation && (
+                      <button
+                        onClick={() => handleGetAiRecommendation(selectedDonation)}
+                        disabled={isLoadingAi}
+                        className="mb-4 w-full flex justify-center items-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                      >
+                        <BrainCircuit className="mr-2 h-4 w-4" />
+                        {isLoadingAi ? "Analyzing..." : "Get AI Recommendation"}
+                      </button>
+                    )}
+                    
+                    {/* AI Recommendation Display */}
+                    {aiRecommendation && (
+                      <div className="mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-md">
+                        <div className="flex items-center mb-2">
+                          <BrainCircuit className="h-5 w-5 text-indigo-600 mr-2" />
+                          <h4 className="text-sm font-medium text-indigo-700">AI Recommendation</h4>
+                        </div>
+                        <div className="text-sm text-gray-700 whitespace-pre-line">
+                          {aiRecommendation}
+                        </div>
+                      </div>
+                    )}
+                    
                     <div className="mt-4 border-t border-gray-200 pt-4">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -353,6 +411,10 @@ const CharityDashboard = ({ donations }) => {
                         <div>
                           <p className="text-sm font-medium text-gray-500">Expiration Date</p>
                           <p className="text-sm text-gray-900">{selectedDonation.expirationDate}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Storage Requirements</p>
+                          <p className="text-sm text-gray-900">{selectedDonation.storageRequirements || "Not specified"}</p>
                         </div>
                       </div>
                       
@@ -388,7 +450,10 @@ const CharityDashboard = ({ donations }) => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSelectedDonation(null)}
+                  onClick={() => {
+                    setSelectedDonation(null);
+                    setAiRecommendation(null);
+                  }}
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
                 >
                   Close

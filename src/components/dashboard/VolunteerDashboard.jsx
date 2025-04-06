@@ -5,10 +5,11 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell
 } from 'recharts';
-import { Truck, Calendar, Clock, MapPin, CheckCircle, Clock as ClockIcon } from 'lucide-react';
+import { Truck, Calendar, Clock, MapPin, CheckCircle, Clock as ClockIcon, BrainCircuit } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { db, doc, collection, getDocs, getDoc, updateDoc, query, where, serverTimestamp } from '../../lib/firebase';
 import { useToast } from '../../hooks/use-toast';
+import { generateOptimizedRoutes } from '../../lib/gemini';
 
 const COLORS = ['#22c55e', '#eab308', '#ef4444'];
 
@@ -19,6 +20,8 @@ const VolunteerDashboard = ({ donations }) => {
   const [myTransports, setMyTransports] = useState([]);
   const [selectedDonation, setSelectedDonation] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [routePlanning, setRoutePlanning] = useState(null);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   
   // Dummy stats data (would be real data in production)
   const stats = {
@@ -92,6 +95,7 @@ const VolunteerDashboard = ({ donations }) => {
       });
       
       setSelectedDonation(null);
+      setRoutePlanning(null);
     } catch (error) {
       console.error("Error volunteering for transport:", error);
       toast({
@@ -133,6 +137,49 @@ const VolunteerDashboard = ({ donations }) => {
         title: "Failed to update status",
         description: "There was an error updating the delivery status. Please try again.",
       });
+    }
+  };
+
+  const handleGetOptimizedRoute = async (donation) => {
+    setIsLoadingRoute(true);
+    try {
+      // For demonstration purposes, we're creating mock location data
+      // In a real application, these would come from the database
+      const pickupLocation = {
+        name: donation.donorName,
+        address: "123 Donor Street, City, State 12345"
+      };
+      
+      const deliveryLocations = [
+        {
+          name: donation.claimedByName,
+          address: "456 Recipient Avenue, City, State 12345"
+        }
+      ];
+      
+      // If you have multiple deliveries, you would add more destinations
+      if (myTransports.length > 0) {
+        myTransports.forEach((transport, index) => {
+          if (transport.id !== donation.id && transport.status !== 'delivered' && index < 3) {
+            deliveryLocations.push({
+              name: transport.claimedByName,
+              address: `${789 + index * 100} Other Street, City, State 12345`
+            });
+          }
+        });
+      }
+      
+      const routeRecommendation = await generateOptimizedRoutes(pickupLocation, deliveryLocations);
+      setRoutePlanning(routeRecommendation);
+    } catch (error) {
+      console.error("Error generating optimized route:", error);
+      toast({
+        variant: "destructive",
+        title: "Failed to generate route",
+        description: "There was an error planning your route. Please try again.",
+      });
+    } finally {
+      setIsLoadingRoute(false);
     }
   };
 
@@ -258,6 +305,7 @@ const VolunteerDashboard = ({ donations }) => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">From</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">To</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Storage</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -276,6 +324,9 @@ const VolunteerDashboard = ({ donations }) => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">{donation.quantity} {donation.unit}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{donation.storageRequirements || "Not specified"}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button
@@ -337,12 +388,23 @@ const VolunteerDashboard = ({ donations }) => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       {donation.status === 'claimed' ? (
-                        <button
-                          onClick={() => handleMarkComplete(donation)}
-                          className="text-primary hover:text-secondary"
-                        >
-                          Mark Delivered
-                        </button>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleMarkComplete(donation)}
+                            className="text-primary hover:text-secondary"
+                          >
+                            Mark Delivered
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDonation(donation);
+                              handleGetOptimizedRoute(donation);
+                            }}
+                            className="text-indigo-600 hover:text-indigo-800"
+                          >
+                            Route Plan
+                          </button>
+                        </div>
                       ) : (
                         <Link to={`/deliveries/${donation.id}`} className="text-primary hover:text-secondary">
                           View Details
@@ -378,6 +440,41 @@ const VolunteerDashboard = ({ donations }) => {
                     <h3 className="text-lg leading-6 font-medium text-gray-900 mb-2">
                       Transport Opportunity
                     </h3>
+                    
+                    {/* AI Route Planning Section */}
+                    {myTransports.includes(selectedDonation) && (
+                      <div className="mb-4">
+                        {!routePlanning && !isLoadingRoute && (
+                          <button
+                            onClick={() => handleGetOptimizedRoute(selectedDonation)}
+                            className="w-full flex justify-center items-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                          >
+                            <BrainCircuit className="mr-2 h-4 w-4" />
+                            Get AI Route Planning
+                          </button>
+                        )}
+                        
+                        {isLoadingRoute && (
+                          <div className="flex justify-center items-center py-6">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+                            <span className="ml-2 text-sm text-indigo-600">Planning route...</span>
+                          </div>
+                        )}
+                        
+                        {routePlanning && (
+                          <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-md">
+                            <div className="flex items-center mb-2">
+                              <BrainCircuit className="h-5 w-5 text-indigo-600 mr-2" />
+                              <h4 className="text-sm font-medium text-indigo-700">AI Route Plan</h4>
+                            </div>
+                            <div className="text-sm text-gray-700 whitespace-pre-line">
+                              {routePlanning}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
                     <div className="mt-4 border-t border-gray-200 pt-4">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -395,6 +492,10 @@ const VolunteerDashboard = ({ donations }) => {
                         <div>
                           <p className="text-sm font-medium text-gray-500">Expiration</p>
                           <p className="text-sm text-gray-900">{selectedDonation.expirationDate}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Storage Requirements</p>
+                          <p className="text-sm text-gray-900">{selectedDonation.storageRequirements || "Not specified"}</p>
                         </div>
                       </div>
                       
@@ -424,16 +525,22 @@ const VolunteerDashboard = ({ donations }) => {
                 </div>
               </div>
               <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                {!myTransports.some(d => d.id === selectedDonation.id) && (
+                  <button
+                    type="button"
+                    onClick={() => handleVolunteer(selectedDonation)}
+                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary text-base font-medium text-white hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:ml-3 sm:w-auto sm:text-sm"
+                  >
+                    Volunteer for Transport
+                  </button>
+                )}
+                
                 <button
                   type="button"
-                  onClick={() => handleVolunteer(selectedDonation)}
-                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary text-base font-medium text-white hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:ml-3 sm:w-auto sm:text-sm"
-                >
-                  Volunteer for Transport
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedDonation(null)}
+                  onClick={() => {
+                    setSelectedDonation(null);
+                    setRoutePlanning(null);
+                  }}
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
                 >
                   Close
