@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Replace with your actual API key when in production
 // Ideally, this should be stored in Firebase environment variables
-const API_KEY =AIzaSyAP9D699yqKycWsYy3S9y3BDYflYfqnMzE;
+const API_KEY = "AIzaSyAP9D699yqKycWsYy3S9y3BDYflYfqnMzE";
 
 // Initialize the Generative AI API
 const genAI = new GoogleGenerativeAI(API_KEY);
