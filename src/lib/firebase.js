@@ -27,13 +27,14 @@ import { getStorage } from "firebase/storage";
 
 // Your web app's Firebase configuration - replace with your actual config
 const firebaseConfig = {
-  apiKey: "AIzaSyBLM7Dml21H3QDtdnJCdeS8NaHyOlpq7z8",
-  authDomain: "food-rescue-nexus.firebaseapp.com",
-  projectId: "food-rescue-nexus",
-  storageBucket: "food-rescue-nexus.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:a1b2c3d4e5f6g7h8i9j0k1"
+  apiKey: "AIzaSyDtpPw0YKC1NwilyHiSZdMKT4D4MSEl62Q",
+  authDomain: "thaprilproject.firebaseapp.com",
+  projectId: "thaprilproject",
+  storageBucket: "thaprilproject.firebasestorage.app",
+  messagingSenderId: "251587128039",
+  appId: "1:251587128039:web:f9df68ef74ba4de8f2d042",
 };
+
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
