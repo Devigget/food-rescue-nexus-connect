@@ -10,51 +10,27 @@ import { BrainCircuit } from 'lucide-react';
 import { generateImpactInsights } from '../lib/gemini';
 
 const Dashboard = () => {
-  const { currentUser, userProfile } = useAuth();
   const { toast } = useToast();
   const [donations, setDonations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [globalInsights, setGlobalInsights] = useState(null);
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+  
+  // For testing, hardcode a dashboard type to view
+  const [activeDashboard, setActiveDashboard] = useState('business');
 
   useEffect(() => {
     const fetchDonations = async () => {
       try {
         let donationsQuery;
         
-        if (userProfile?.userType === 'business') {
-          // Get donations made by this business
-          donationsQuery = query(
-            collection(db, 'donations'),
-            where('donorId', '==', currentUser.uid),
-            orderBy('createdAt', 'desc'),
-            limit(10)
-          );
-        } else if (userProfile?.userType === 'charity') {
-          // Get available donations and donations claimed by this charity
-          donationsQuery = query(
-            collection(db, 'donations'),
-            where('status', 'in', ['available', 'claimed']),
-            orderBy('createdAt', 'desc'),
-            limit(20)
-          );
-        } else if (userProfile?.userType === 'volunteer') {
-          // Get donations that need transportation
-          donationsQuery = query(
-            collection(db, 'donations'),
-            where('status', '==', 'claimed'),
-            where('needsTransport', '==', true),
-            orderBy('createdAt', 'desc'),
-            limit(20)
-          );
-        } else {
-          donationsQuery = query(
-            collection(db, 'donations'),
-            orderBy('createdAt', 'desc'),
-            limit(10)
-          );
-        }
+        // Simplified query for testing - gets most recent donations
+        donationsQuery = query(
+          collection(db, 'donations'),
+          orderBy('createdAt', 'desc'),
+          limit(10)
+        );
         
         const querySnapshot = await getDocs(donationsQuery);
         const donationsList = querySnapshot.docs.map(doc => ({
@@ -64,22 +40,75 @@ const Dashboard = () => {
         
         setDonations(donationsList);
 
-        // Once we have donations data, fetch global insights
-        if (donationsList.length > 0) {
+        // Generate insights with sample data if no donations are available
+        if (donationsList.length === 0) {
+          // Create mock data for testing
+          const mockDonations = [
+            {
+              id: 'mock1',
+              donorId: 'business1',
+              claimedBy: 'charity1',
+              foodName: 'Fresh Vegetables',
+              category: 'Produce',
+              quantity: '25',
+              unit: 'pounds',
+              status: 'available',
+              createdAt: new Date()
+            },
+            {
+              id: 'mock2',
+              donorId: 'business2',
+              claimedBy: 'charity1',
+              foodName: 'Bread',
+              category: 'Bakery',
+              quantity: '15',
+              unit: 'pounds',
+              status: 'claimed',
+              createdAt: new Date()
+            }
+          ];
+          setDonations(mockDonations);
+          fetchGlobalInsights(mockDonations);
+        } else {
           fetchGlobalInsights(donationsList);
         }
       } catch (err) {
         console.error("Error fetching donations:", err);
         setError("Failed to load donations. Please refresh the page.");
+        
+        // Use mock data if fetch fails
+        const mockDonations = [
+          {
+            id: 'mock1',
+            donorId: 'business1',
+            claimedBy: 'charity1',
+            foodName: 'Fresh Vegetables',
+            category: 'Produce',
+            quantity: '25',
+            unit: 'pounds',
+            status: 'available',
+            createdAt: new Date()
+          },
+          {
+            id: 'mock2',
+            donorId: 'business2',
+            claimedBy: 'charity1',
+            foodName: 'Bread',
+            category: 'Bakery',
+            quantity: '15',
+            unit: 'pounds',
+            status: 'claimed',
+            createdAt: new Date()
+          }
+        ];
+        setDonations(mockDonations);
       } finally {
         setLoading(false);
       }
     };
 
-    if (currentUser && userProfile) {
-      fetchDonations();
-    }
-  }, [currentUser, userProfile]);
+    fetchDonations();
+  }, []);
 
   const fetchGlobalInsights = async (donationsList) => {
     setIsLoadingInsights(true);
@@ -122,17 +151,6 @@ const Dashboard = () => {
     }
   };
 
-  if (!currentUser || !userProfile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Access Restricted</h1>
-          <p className="text-gray-600">Please log in to access your dashboard.</p>
-        </div>
-      </div>
-    );
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -157,21 +175,47 @@ const Dashboard = () => {
         <div className="mb-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
             <h1 className="text-3xl font-bold text-gray-900">
-              Welcome, {userProfile.organizationName || currentUser.email}!
+              Dashboard
             </h1>
-            <button
-              onClick={handleRefreshInsights}
-              disabled={isLoadingInsights}
-              className="mt-2 md:mt-0 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-            >
-              <BrainCircuit className="mr-2 h-5 w-5" />
-              {isLoadingInsights ? "Analyzing..." : "Platform Insights"}
-            </button>
+            <div className="mt-4 md:mt-0 flex space-x-2">
+              <button
+                onClick={() => setActiveDashboard('business')}
+                className={`px-4 py-2 rounded-md ${activeDashboard === 'business' 
+                  ? 'bg-primary text-white' 
+                  : 'bg-gray-200 text-gray-800'}`}
+              >
+                Business View
+              </button>
+              <button
+                onClick={() => setActiveDashboard('charity')}
+                className={`px-4 py-2 rounded-md ${activeDashboard === 'charity' 
+                  ? 'bg-primary text-white' 
+                  : 'bg-gray-200 text-gray-800'}`}
+              >
+                Charity View
+              </button>
+              <button
+                onClick={() => setActiveDashboard('volunteer')}
+                className={`px-4 py-2 rounded-md ${activeDashboard === 'volunteer' 
+                  ? 'bg-primary text-white' 
+                  : 'bg-gray-200 text-gray-800'}`}
+              >
+                Volunteer View
+              </button>
+              <button
+                onClick={handleRefreshInsights}
+                disabled={isLoadingInsights}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+              >
+                <BrainCircuit className="mr-2 h-5 w-5" />
+                {isLoadingInsights ? "Analyzing..." : "Generate Insights"}
+              </button>
+            </div>
           </div>
           <p className="text-gray-600 mt-1">
-            {userProfile.userType === 'business' && "Manage your food donations and track your impact."}
-            {userProfile.userType === 'charity' && "Find available donations and manage your requests."}
-            {userProfile.userType === 'volunteer' && "Find opportunities to help deliver food donations."}
+            {activeDashboard === 'business' && "Manage your food donations and track your impact."}
+            {activeDashboard === 'charity' && "Find available donations and manage your requests."}
+            {activeDashboard === 'volunteer' && "Find opportunities to help deliver food donations."}
           </p>
         </div>
         
@@ -188,15 +232,15 @@ const Dashboard = () => {
           </div>
         )}
         
-        {userProfile.userType === 'business' && (
+        {activeDashboard === 'business' && (
           <BusinessDashboard donations={donations} />
         )}
         
-        {userProfile.userType === 'charity' && (
+        {activeDashboard === 'charity' && (
           <CharityDashboard donations={donations} />
         )}
         
-        {userProfile.userType === 'volunteer' && (
+        {activeDashboard === 'volunteer' && (
           <VolunteerDashboard donations={donations} />
         )}
       </div>
